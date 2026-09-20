@@ -419,9 +419,16 @@
           <label for="cFiets">🚲</label>
         </div>
       </div>
-      <div class="card-row full-col">
-        <div class="card-row-label">Thuisstation</div>
-        <input type="text" id="thuisStation" value="Sint-Katelijne-Waver" placeholder="bv. Antwerpen-Centraal" />
+      <div class="card-row">
+        <div>
+          <div class="card-row-label">Thuisstation</div>
+        </div>
+        <div class="seg">
+          <input type="radio" name="thuisStation" id="stMech" value="Mechelen" checked />
+          <label for="stMech">Mechelen</label>
+          <input type="radio" name="thuisStation" id="stSKW" value="Sint-Katelijne-Waver" />
+          <label for="stSKW">Sint-Kat.</label>
+        </div>
       </div>
     </div>
 
@@ -602,7 +609,7 @@
 
       const datum    = document.getElementById("lesDatum").value;
       const start    = document.getElementById("lesStart").value;
-      const station  = document.getElementById("thuisStation").value.trim();
+      const station  = document.querySelector("input[name='thuisStation']:checked").value;
       const campus   = document.getElementById("campusSelect").value;
       const scMode   = document.querySelector("input[name='stationCampusMode']:checked").value;
       const tsMode   = document.querySelector("input[name='thuisStationMode']:checked").value;
