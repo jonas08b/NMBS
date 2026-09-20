@@ -114,7 +114,6 @@
     .results-container {
       display: none;
       margin-top: 16px;
-      display: none;
       flex-direction: column;
       gap: 12px;
     }
@@ -196,6 +195,54 @@
       border-radius: 8px; padding: 10px 14px;
     }
     @media (max-width: 520px) { .result-grid { grid-template-columns: 1fr; } }
+
+    /* ── Agenda sync styles ── */
+    .agenda-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #0c1a2e;
+      border: 1px solid #1e3a5f;
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .agenda-bar .agenda-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .agenda-bar .agenda-text { font-size: 0.85rem; color: #93c5fd; flex: 1; min-width: 140px; }
+    .agenda-bar .agenda-text strong { color: #bfdbfe; }
+    .agenda-bar .agenda-text small { color: #4b5563; display: block; margin-top: 1px; }
+    .agenda-sync-btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid #2563eb;
+      background: transparent;
+      color: #60a5fa;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .agenda-sync-btn:hover:not(:disabled) { background: #1e3a5f; }
+    .agenda-sync-btn:disabled { opacity: 0.45; cursor: default; }
+    .agenda-status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #374151;
+      flex-shrink: 0;
+    }
+    .agenda-status-dot.loading { background: #f59e0b; animation: pulse 1s infinite; }
+    .agenda-status-dot.ok { background: #22c55e; }
+    .agenda-status-dot.err { background: #ef4444; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .les-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: #0c1a2e; border: 1px solid #1e3a5f; color: #60a5fa;
+      border-radius: 6px; padding: 4px 9px;
+      font-size: 0.78rem; font-weight: 600; margin-top: 6px;
+    }
   </style>
 </head>
 <body>
@@ -204,11 +251,25 @@
     <p class="subtitle">Bereken je vertrektijd van thuis op basis van je eerste les en realtime NMBS-data.</p>
 
     <div class="card">
+
+      <!-- ── Agenda sync banner ── -->
+      <div class="section-title">Agenda</div>
+      <div class="agenda-bar" id="agendaBar">
+        <span class="agenda-status-dot" id="agendaDot"></span>
+        <span class="agenda-icon">📅</span>
+        <span class="agenda-text" id="agendaText">
+          <strong>KU Leuven rooster</strong>
+          <small>Klik op "Sync" om je eerste les automatisch in te laden.</small>
+        </span>
+        <button class="agenda-sync-btn" id="agendaSyncBtn" type="button">🔄 Sync agenda</button>
+      </div>
+
       <div class="section-title">Lesgegevens</div>
       <div class="grid">
         <div>
           <label for="lesDatum">Lesdatum</label>
           <input type="date" id="lesDatum" required />
+          <div id="lesBadge" style="display:none;" class="les-badge"></div>
         </div>
         <div>
           <label for="lesStart">Starttijd eerste les</label>
@@ -264,6 +325,161 @@
   </div>
 
   <script>
+    // ─────────────────────────────────────────────
+    //  Agenda sync – KU Leuven TimeEdit ICS
+    // ─────────────────────────────────────────────
+    const ICS_URL = "https://cloud.timeedit.net/be_kuleuven/web/public/s.ics?sid=7&type=student&field=student.schedule.id&value=0050569421EF1FD1A89767602A006000";
+
+    // CORS proxies we try in order
+    const CORS_PROXIES = [
+      u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+      u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    ];
+
+    async function fetchICS(icsUrl) {
+      let lastErr;
+      for (const proxyFn of CORS_PROXIES) {
+        try {
+          const res = await fetch(proxyFn(icsUrl), { cache: "no-store" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const text = await res.text();
+          if (!text.includes("BEGIN:VCALENDAR")) throw new Error("Geen geldig ICS bestand");
+          return text;
+        } catch (e) { lastErr = e; }
+      }
+      throw lastErr || new Error("Agenda niet beschikbaar");
+    }
+
+    // Parse ICS and return all VEVENT objects as plain objects
+    function parseICS(icsText) {
+      const events = [];
+      // Unfold lines (RFC 5545: continuation lines start with space/tab)
+      const unfolded = icsText.replace(/\r?\n[ \t]/g, "");
+      const lines = unfolded.split(/\r?\n/);
+
+      let current = null;
+      for (const line of lines) {
+        if (line === "BEGIN:VEVENT") { current = {}; continue; }
+        if (line === "END:VEVENT") { if (current) events.push(current); current = null; continue; }
+        if (!current) continue;
+
+        const colonIdx = line.indexOf(":");
+        if (colonIdx < 0) continue;
+        const key   = line.slice(0, colonIdx).toUpperCase();
+        const value = line.slice(colonIdx + 1).trim();
+
+        // DTSTART / DTEND can have params: DTSTART;TZID=Europe/Brussels:20250101T083000
+        const baseKey = key.split(";")[0];
+        current[baseKey] = value;
+      }
+      return events;
+    }
+
+    // Convert ICS date-time string to JS Date (handles local TZID and UTC Z)
+    function icsDateToDate(str) {
+      if (!str) return null;
+      // e.g. "20250101T083000Z" or "20250101T083000"
+      const m = str.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?/);
+      if (!m) return null;
+      const [, y, mo, d, h, min, s, z] = m;
+      if (z) {
+        return new Date(Date.UTC(+y, +mo - 1, +d, +h, +min, +s));
+      }
+      // Treat as local time (Belgium – server writes local when TZID=Europe/Brussels)
+      return new Date(+y, +mo - 1, +d, +h, +min, +s);
+    }
+
+    // Get the first event on a given YYYY-MM-DD date string
+    function firstEventOnDate(events, dateStr) {
+      const [y, m, d] = dateStr.split("-").map(Number);
+      const dayStart  = new Date(y, m - 1, d, 0, 0, 0).getTime();
+      const dayEnd    = new Date(y, m - 1, d, 23, 59, 59).getTime();
+
+      const onDay = events
+        .map(ev => ({ ev, dt: icsDateToDate(ev["DTSTART"]) }))
+        .filter(({ dt }) => dt && dt.getTime() >= dayStart && dt.getTime() <= dayEnd)
+        .sort((a, b) => a.dt - b.dt);
+
+      return onDay.length > 0 ? onDay[0] : null;
+    }
+
+    // UI helpers
+    const dot      = document.getElementById("agendaDot");
+    const agendaTxt = document.getElementById("agendaText");
+    const syncBtn  = document.getElementById("agendaSyncBtn");
+    const lesBadge = document.getElementById("lesBadge");
+
+    function setAgendaStatus(state, html) {
+      dot.className = "agenda-status-dot " + state;
+      agendaTxt.innerHTML = html;
+    }
+
+    // Cache parsed events in memory for the session
+    let cachedEvents = null;
+
+    async function syncAgenda() {
+      syncBtn.disabled = true;
+      setAgendaStatus("loading",
+        `<strong>KU Leuven rooster</strong><small>Agenda ophalen…</small>`);
+
+      try {
+        const icsText = await fetchICS(ICS_URL);
+        cachedEvents  = parseICS(icsText);
+
+        const totalEvents = cachedEvents.length;
+        setAgendaStatus("ok",
+          `<strong>KU Leuven rooster</strong>
+           <small>✅ ${totalEvents} evenement${totalEvents !== 1 ? "en" : ""} geladen — selecteer datum voor automatisch invullen.</small>`);
+
+        // If a date is already chosen, fill it in immediately
+        const datum = document.getElementById("lesDatum").value;
+        if (datum) fillFromAgenda(datum);
+      } catch (err) {
+        cachedEvents = null;
+        setAgendaStatus("err",
+          `<strong>KU Leuven rooster</strong>
+           <small>❌ Kon agenda niet laden: ${err.message}</small>`);
+      } finally {
+        syncBtn.disabled = false;
+      }
+    }
+
+    function fillFromAgenda(dateStr) {
+      if (!cachedEvents) return;
+
+      const result = firstEventOnDate(cachedEvents, dateStr);
+      const lesStartEl = document.getElementById("lesStart");
+
+      if (!result) {
+        lesBadge.style.display = "none";
+        lesStartEl.value = "";
+        return;
+      }
+
+      const { ev, dt } = result;
+      const hh  = String(dt.getHours()).padStart(2, "0");
+      const min = String(dt.getMinutes()).padStart(2, "0");
+      lesStartEl.value = `${hh}:${min}`;
+
+      // Show badge with summary
+      const summary = ev["SUMMARY"] || "Les";
+      // Decode some common ICS escapes
+      const cleanSummary = summary.replace(/\\,/g, ",").replace(/\\n/g, " ").replace(/\\;/g, ";");
+      lesBadge.textContent = `📚 ${cleanSummary} — ${hh}:${min}`;
+      lesBadge.style.display = "inline-flex";
+    }
+
+    // Sync on button click
+    syncBtn.addEventListener("click", syncAgenda);
+
+    // When date changes, try to fill from already-loaded agenda
+    document.getElementById("lesDatum").addEventListener("change", e => {
+      fillFromAgenda(e.target.value);
+    });
+
+    // ─────────────────────────────────────────────
+    //  Original calculator logic (unchanged)
+    // ─────────────────────────────────────────────
     const campusConfig = {
       "Carolus":    { stappenMin: 23, fietsMin: 8,  station: "Antwerpen-Centraal" },
       "Opera":      { stappenMin: 13, fietsMin: 6,  station: "Antwerpen-Centraal" },
@@ -309,17 +525,14 @@
         throw new Error("Geen verbindingen gevonden voor deze datum/tijd.");
       }
 
-      // Keep only trains arriving on time (arrival <= latestArrivalMs)
       const valid = data.connection.filter(c =>
         parseInt(c.arrival.time, 10) * 1000 <= latestArrivalMs
       );
 
       if (valid.length === 0) {
-        // No valid options: return earliest available as fallback (not on time)
         return [{ connection: data.connection[0], onTime: false }];
       }
 
-      // Return the last 2 valid trains (latest-departing on top)
       const last2 = valid.slice(-2).reverse();
       return last2.map(c => ({ connection: c, onTime: true }));
     }
