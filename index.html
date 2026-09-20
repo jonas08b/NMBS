@@ -261,7 +261,7 @@
           <strong>KU Leuven rooster</strong>
           <small>Klik op "Sync" om je eerste les automatisch in te laden.</small>
         </span>
-        <button class="agenda-sync-btn" id="agendaSyncBtn" type="button">🔄 Sync agenda</button>
+
       </div>
 
       <div class="section-title">Lesgegevens</div>
@@ -406,7 +406,6 @@
     // UI helpers
     const dot      = document.getElementById("agendaDot");
     const agendaTxt = document.getElementById("agendaText");
-    const syncBtn  = document.getElementById("agendaSyncBtn");
     const lesBadge = document.getElementById("lesBadge");
 
     function setAgendaStatus(state, html) {
@@ -418,7 +417,6 @@
     let cachedEvents = null;
 
     async function syncAgenda() {
-      syncBtn.disabled = true;
       setAgendaStatus("loading",
         `<strong>KU Leuven rooster</strong><small>Agenda ophalen…</small>`);
 
@@ -439,8 +437,6 @@
         setAgendaStatus("err",
           `<strong>KU Leuven rooster</strong>
            <small>❌ Kon agenda niet laden: ${err.message}</small>`);
-      } finally {
-        syncBtn.disabled = false;
       }
     }
 
@@ -469,8 +465,8 @@
       lesBadge.style.display = "inline-flex";
     }
 
-    // Sync on button click
-    syncBtn.addEventListener("click", syncAgenda);
+    // Auto-load agenda on page load
+    syncAgenda();
 
     // When date changes, try to fill from already-loaded agenda
     document.getElementById("lesDatum").addEventListener("change", e => {
