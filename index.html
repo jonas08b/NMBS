@@ -440,30 +440,14 @@
 
   <script>
     // ── Agenda ──────────────────────────────────────
-    const ICS_URL = "https://cloud.timeedit.net/be_kuleuven/web/public/s.ics?sid=7&type=student&field=student.schedule.id&value=0050569421EF1FD1A89767602A006000";
-    const PROXIES = [
-      u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-      u => `https://api.cors.lol/url=${encodeURIComponent(u)}`,
-      u => `https://cors.now.sh/${u}`,
-      u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-      u => `https://thingproxy.freeboard.io/fetch/${u}`,
-    ];
+    const ICS_URL = "https://kuleuven-ics-proxy.jonassimons08.workers.dev/";
 
     async function fetchICS(url) {
-      let last;
-      for (const p of PROXIES) {
-        try {
-          const r = await fetch(p(url), {
-            cache: "no-store",
-            signal: AbortSignal.timeout(8000) // 8s timeout per proxy
-          });
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          const t = await r.text();
-          if (!t.includes("BEGIN:VCALENDAR")) throw new Error("Geen geldig ICS");
-          return t;
-        } catch(e) { last = e; }
-      }
-      throw new Error("Alle CORS-proxies gefaald. Probeer later opnieuw.");
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const t = await r.text();
+      if (!t.includes("BEGIN:VCALENDAR")) throw new Error("Geen geldig ICS");
+      return t;
     }
 
     function parseICS(text) {
