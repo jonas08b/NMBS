@@ -589,14 +589,14 @@
     }
 
     // ── Invite naar papa ─────────────────────────────
-    async function stuurInvite(datum, vertrektijd, trein, van, naar, btn) {
+    async function stuurInvite(datum, vertrektijd, trein, van, naar, duurMinuten, btn) {
       btn.disabled = true;
       btn.textContent = 'Bezig…';
       try {
         const res = await fetch('/api/create-event', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ datum, vertrektijd, trein, van, naar })
+          body: JSON.stringify({ datum, vertrektijd, trein, van, naar, duurMinuten })
         });
         const data = await res.json();
         if (data.success) {
@@ -654,7 +654,7 @@
           ${badge}
           <button
             class="invite-btn"
-            onclick="stuurInvite('${datum}', '${vertrekTijd}', '${trainSafe}', '${vanSafe}', '${naarSafe}', this)">
+            onclick="stuurInvite('${datum}', '${vertrekTijd}', '${trainSafe}', '${vanSafe}', '${naarSafe}', ${thuisMin}, this)">
             📅 Stuur invite naar papa
           </button>
         </div>`;
