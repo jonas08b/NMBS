@@ -1,6 +1,6 @@
-import { google } from 'googleapis';
+const { google } = require('googleapis');
 
-export default function handler(req, res) {
+module.exports = async function handler(req, res) {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
@@ -8,14 +8,16 @@ export default function handler(req, res) {
   );
 
   if (req.query.code) {
-    oauth2Client.getToken(req.query.code, (err, token) => {
-      if (err) return res.send('Fout: ' + err.message);
+    try {
+      const { tokens } = await oauth2Client.getToken(req.query.code);
       res.send(`
         <h2>Jouw Refresh Token:</h2>
-        <code style="font-size:1.2rem">${token.refresh_token}</code>
+        <code style="word-break:break-all;font-size:1rem">${tokens.refresh_token}</code>
         <p>Kopieer dit en zet het in Vercel als GOOGLE_REFRESH_TOKEN</p>
       `);
-    });
+    } catch(err) {
+      res.send('Fout: ' + err.message);
+    }
   } else {
     const url = oauth2Client.generateAuthUrl({
       access_type: 'offline',
