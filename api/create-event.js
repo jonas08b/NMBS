@@ -1,9 +1,9 @@
 const { google } = require('googleapis');
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { summary, description, startTime, endTime, date } = req.body;
+  const { datum, vertrektijd, trein, van, naar } = req.body;
 
   const auth = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -16,19 +16,22 @@ export default async function handler(req, res) {
 
   const calendar = google.calendar({ version: 'v3', auth });
 
-  const [year, month, day] = date.split('-').map(Number);
-  const [sh, sm] = startTime.split(':').map(Number);
-  const [eh, em] = endTime.split(':').map(Number);
+  const [year, month, day] = datum.split('-').map(Number);
+  const [sh, sm] = vertrektijd.split(':').map(Number);
+
+  // Event duurt 1 uur (tot aankomst op station)
+  const start = new Date(year, month-1, day, sh, sm);
+  const end   = new Date(year, month-1, day, sh, sm + 60);
 
   const event = {
-    summary: summary,
-    description: description,
+    summary: `🚂 Jonas vertrekt — ${vertrektijd}`,
+    description: `Vertrek van thuis om ${vertrektijd}\nTrein: ${trein}\n${van} → ${naar}`,
     start: {
-      dateTime: new Date(year, month-1, day, sh, sm).toISOString(),
+      dateTime: start.toISOString(),
       timeZone: 'Europe/Brussels'
     },
     end: {
-      dateTime: new Date(year, month-1, day, eh, em).toISOString(),
+      dateTime: end.toISOString(),
       timeZone: 'Europe/Brussels'
     },
     attendees: [
@@ -43,7 +46,7 @@ export default async function handler(req, res) {
       resource: event,
       sendNotifications: true
     });
-    res.status(200).json({ success: true, eventId: result.data.id });
+    res.status(200).json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
