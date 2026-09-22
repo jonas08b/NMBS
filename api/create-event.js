@@ -36,7 +36,7 @@ module.exports = async function handler(req, res) {
       `${String(eind.getMinutes()).padStart(2, '0')}`;
 
     const event = {
-      summary: `🚂 Afzetten Jonas station Mechelen — ${vertrektijd}`,
+      summary: `🚂 Afzetten Jonas station Mechelen`,
       description:
         `Vertrek van thuis om ${vertrektijd}\n` +
         `Trein: ${trein}\n` +
