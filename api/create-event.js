@@ -5,7 +5,7 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { datum, vertrektijd, trein, van, naar } = req.body;
+  const { datum, vertrektijd, trein, van, naar, duurMinuten } = req.body;
 
   try {
     // Google OAuth
@@ -27,9 +27,9 @@ module.exports = async function handler(req, res) {
     const [year, month, day] = datum.split('-').map(Number);
     const [hour, minute] = vertrektijd.split(':').map(Number);
 
-    // Event duurt 1 uur
+    // Event duurt even lang als de reistijd van thuis naar het station
     const eind = new Date(year, month - 1, day, hour, minute);
-    eind.setHours(eind.getHours() + 1);
+    eind.setMinutes(eind.getMinutes() + (duurMinuten || 25));
 
     const eindtijd =
       `${String(eind.getHours()).padStart(2, '0')}:` +
