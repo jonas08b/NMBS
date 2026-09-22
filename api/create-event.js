@@ -59,6 +59,8 @@ module.exports = async function handler(req, res) {
       ]
     };
 
+    console.log(event.start);
+    console.log(event.end);
     await calendar.events.insert({
       calendarId: 'primary',
       resource: event,
